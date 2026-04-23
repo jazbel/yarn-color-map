@@ -1,6 +1,6 @@
 # Yarn Color Map
 
-Scrapes solid-color yarn from **Hobbii**, **LoveCrafts**, and **Knit Picks**, extracts the RGB hex code from each product image, and displays everything in a searchable, filterable web UI.
+Scrapes solid-color yarn from **Hobbii**, **LoveCrafts**, and **Knit Picks**, extracts the RGB hex code from each product image using PIL color quantization, and displays everything in a searchable, filterable web UI.
 
 ---
 
@@ -8,13 +8,14 @@ Scrapes solid-color yarn from **Hobbii**, **LoveCrafts**, and **Knit Picks**, ex
 
 | Step | What happens |
 |------|-------------|
-| 1 | The backend scrapes each store's product catalog |
-| 2 | For each color variant it downloads the product image (300 px) |
+| 1 | The scraper fetches each store's product catalog |
+| 2 | For each solid color variant it downloads the product image (300 px) |
 | 3 | PIL median-cut quantization extracts the dominant yarn color |
-| 4 | The hex code + image URL are stored in a local cache (`yarn_cache.json`) |
-| 5 | The frontend fetches the cache and renders each yarn with its photo and hex overlay |
+| 4 | The hex code, image URL, weight, and fiber are stored in `yarn_cache.json` |
+| 5 | The FastAPI server serves the cache through a REST API |
+| 6 | The frontend renders each yarn with its photo, hex overlay, and filter chips |
 
-**Hobbii** uses the Shopify products JSON API (`/collections/yarn/products.json`), which returns per-variant `featured_image` URLs — one photo per color. The other stores fall back to comprehensive seed data when live scraping is blocked.
+**Hobbii** uses the Shopify products JSON API (`/collections/yarn/products.json`), which returns per-variant `featured_image` URLs — one photo per color. LoveCrafts and Knit Picks use HTML scraping with comprehensive seed data fallback when live scraping is blocked.
 
 ---
 
@@ -28,11 +29,12 @@ Scrapes solid-color yarn from **Hobbii**, **LoveCrafts**, and **Knit Picks**, ex
 ## Setup
 
 ```bash
+git clone https://github.com/jazbel/yarn-color-map.git
 cd yarn-color-map/backend
 pip3 install -r requirements.txt
 ```
 
-`requirements.txt` installs:
+Dependencies:
 - `fastapi` + `uvicorn` — web server
 - `httpx` — async HTTP client for scraping
 - `beautifulsoup4` + `lxml` — HTML parsing
@@ -40,68 +42,118 @@ pip3 install -r requirements.txt
 
 ---
 
-## Run the server
+## Quickstart
+
+Run the scraper first, then start the server:
 
 ```bash
-cd yarn-color-map/backend
-python3 main.py
+./start.sh
 ```
 
 Open **http://localhost:8000** in your browser.
 
-On first load the server scrapes all three stores automatically and caches the results. Subsequent loads are instant (served from cache).
+### Options
+
+```bash
+./start.sh           # scrape (skips already-cached stores), then start server
+./start.sh --fresh   # clear cache, scrape everything fresh, then start server
+```
 
 ---
 
-## Scraping
+## Running manually
 
-### Automatic (on first load)
+### 1. Scrape yarn data
 
-Just open the app. If `yarn_cache.json` does not exist the server scrapes everything before returning results. Hobbii has ~5 000 color variants so the first scrape takes a few minutes.
+```bash
+cd backend
+python3 scrape.py              # scrape all stores
+python3 scrape.py hobbii       # scrape one store only
+python3 scrape.py lovecrafts knitpicks
+```
 
-### Manual refresh via the UI
+The scraper saves `yarn_cache.json` after each store completes, so progress is not lost if interrupted.
+
+### 2. Start the server
+
+```bash
+cd backend
+python3 main.py
+```
+
+Open **http://localhost:8000**.
+
+---
+
+## Refreshing data
+
+### Via the UI
 
 Click **↻ Refresh** in the top-right corner of the app.
 
-### Manual refresh via the API
+### Via the API
 
-Refresh all stores:
 ```bash
+# Refresh all stores
 curl -X POST http://localhost:8000/api/refresh
-```
 
-Refresh one store:
-```bash
+# Refresh one store
 curl -X POST "http://localhost:8000/api/refresh?store=hobbii"
 curl -X POST "http://localhost:8000/api/refresh?store=lovecrafts"
 curl -X POST "http://localhost:8000/api/refresh?store=knitpicks"
-```
 
-Clear the cache entirely and force a full re-scrape on next load:
-```bash
+# Clear cache (forces full re-scrape on next request)
 curl -X DELETE http://localhost:8000/api/cache
-# or just delete the file:
-rm yarn-color-map/backend/yarn_cache.json
 ```
 
 ---
 
-## API endpoints
+## Filters
+
+The UI sidebar supports filtering by:
+
+| Filter | Values |
+|--------|--------|
+| Store | Hobbii, LoveCrafts, Knit Picks |
+| Color Family | red, pink, orange, yellow, green, teal, blue, purple, gray, white, black |
+| Weight | Lace, Fingering, Sport, DK, Worsted, Aran, Bulky, Super Bulky, Jumbo |
+| Fiber | Cotton, Wool, Acrylic, Alpaca, Mohair, Linen, Silk, Bamboo, Nylon, Polyester, Cashmere |
+
+The color picker lets you pick any hex color and find the closest-matching yarns by HSV distance.
+
+---
+
+## API reference
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/yarns` | List yarns. Supports `store`, `color_family`, `search`, `limit`, `offset` |
+| `GET` | `/api/yarns` | List yarns (filterable, paginated) |
 | `GET` | `/api/stores` | List available stores |
 | `GET` | `/api/color-families` | List color family names |
-| `POST` | `/api/refresh` | Re-scrape (optional `?store=` param) |
-| `DELETE` | `/api/cache` | Wipe the cache |
+| `GET` | `/api/weights` | List yarn weights in CYC order |
+| `GET` | `/api/fibers` | List fiber types |
+| `POST` | `/api/refresh` | Re-scrape stores (optional `?store=` param) |
+| `DELETE` | `/api/cache` | Wipe `yarn_cache.json` |
 
-Example — get all blue Hobbii yarns:
+### `/api/yarns` query parameters
+
+| Param | Example | Description |
+|-------|---------|-------------|
+| `store` | `hobbii` | Filter by store ID |
+| `color_family` | `blue` | Filter by color family |
+| `weight` | `DK` | Filter by yarn weight |
+| `fiber` | `Wool` | Filter by fiber type |
+| `search` | `cobalt` | Search product name or color name |
+| `limit` | `60` | Results per page (default 60) |
+| `offset` | `120` | Pagination offset |
+
+Example:
 ```bash
-curl "http://localhost:8000/api/yarns?store=hobbii&color_family=blue&limit=50"
+curl "http://localhost:8000/api/yarns?store=hobbii&color_family=blue&weight=DK&limit=20"
 ```
 
-Each yarn object looks like:
+### Yarn object shape
+
 ```json
 {
   "product_name": "Friends Cotton 8/4",
@@ -113,18 +165,34 @@ Each yarn object looks like:
   "store_id": "hobbii",
   "image_url": "https://cdn.shopify.com/s/.../8-4-65_300x.jpg",
   "url": "https://hobbii.com/products/friends-cotton-8-4",
-  "weight": null,
+  "weight": "DK",
+  "fiber": "Cotton",
   "price": "$3.49"
 }
 ```
 
-`color_source` is `"image"` when the hex was extracted from the product photo, or `"name"` when it was mapped from the color name text.
+`color_source` is `"image"` when the hex was extracted from the product photo, or `"name"` when it was mapped from the color name string.
 
 ---
 
 ## Deploy on a server (Nginx + systemd)
 
-### 1. Create a systemd service
+### 1. Upload files
+
+```bash
+scp -r yarn-color-map user@your-server:/var/www/
+ssh user@your-server
+cd /var/www/yarn-color-map/backend
+pip3 install -r requirements.txt
+```
+
+### 2. Pre-populate the cache
+
+```bash
+python3 scrape.py
+```
+
+### 3. Create a systemd service
 
 ```ini
 # /etc/systemd/system/yarn-color-map.service
@@ -147,7 +215,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now yarn-color-map
 ```
 
-### 2. Nginx reverse proxy
+### 4. Nginx reverse proxy
 
 ```nginx
 server {
@@ -165,7 +233,8 @@ server {
 ```bash
 sudo ln -s /etc/nginx/sites-available/yarn-color-map /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-# Add HTTPS:
+
+# Add HTTPS
 sudo certbot --nginx -d yarn.yourdomain.com
 ```
 
@@ -175,10 +244,13 @@ sudo certbot --nginx -d yarn.yourdomain.com
 
 ```
 yarn-color-map/
+├── start.sh                 # Scrape + start server in one command
 ├── backend/
 │   ├── main.py              # FastAPI app + API routes
-│   ├── color_utils.py       # Image extraction + color-name-to-hex mapping
-│   ├── yarn_cache.json      # Auto-generated cache (gitignore this)
+│   ├── scrape.py            # Standalone scraper script
+│   ├── color_utils.py       # Image color extraction + name-to-hex mapping
+│   ├── yarn_meta.py         # Weight and fiber inference from product text
+│   ├── yarn_cache.json      # Auto-generated cache (gitignored)
 │   ├── requirements.txt
 │   └── scrapers/
 │       ├── base.py          # BaseScraper + make_yarn()
