@@ -555,6 +555,26 @@ body {
   100% { background-position: -200% 0; }
 }
 
+/* ── Footer ───────────────────────────────────────────────── */
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+
+.footer-link {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+.footer-link:hover { color: var(--accent); }
+
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 768px) {
   .layout { flex-direction: column; }
