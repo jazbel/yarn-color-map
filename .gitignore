@@ -1,0 +1,16 @@
+# Cache & runtime
+backend/yarn_cache.json
+backend/__pycache__/
+backend/scrapers/__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
