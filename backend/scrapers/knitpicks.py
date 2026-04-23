@@ -1,137 +1,140 @@
 """
-Knit Picks scraper — tries live SFCC HTML scraping, falls back to
-comprehensive seed data for Palette (200+ colors), Wool of the Andes,
-Comfy, and Stroll.
+Knit Picks scraper.
+
+Uses the JSON-LD ProductGroup data embedded in each category page.
+Every KnitPicks yarn category page embeds a <script type="application/ld+json">
+block with a ProductGroup whose hasVariant array lists every colour variant,
+complete with name, URL, and per-colour product image hosted on CloudFront.
+
+Tier 1: Fetch category pages → parse JSON-LD hasVariant → PIL image extraction.
+Tier 2: Color-name → hex fallback (used when all category pages are unreachable).
 """
 import asyncio
+import json as _json
 from typing import Any, Optional
 
 import httpx
 from bs4 import BeautifulSoup
 
 from scrapers.base import BaseScraper, HEADERS
+from yarn_meta import infer_weight, infer_fiber
 
 BATCH_SIZE = 20
 
 _MULTICOLOR = {
     "rainbow","multi","variegat","ombre","gradient","speckl",
-    "print","tweed","marled","stripe","tie-dye","heather",
+    "print","tweed","marled","stripe","tie-dye",
 }
 
 def _is_solid(name: str) -> bool:
     n = name.lower()
-    # Allow "heather" in the name — it's a common solid-adjacent colorway
-    kws = _MULTICOLOR - {"heather"}
-    return not any(kw in n for kw in kws)
+    return not any(kw in n for kw in _MULTICOLOR)
 
-def _abs(href: str, base: str) -> str:
-    if href.startswith("//"):
-        return "https:" + href
-    if href.startswith("/"):
-        return base.rstrip("/") + href
-    return href
-
-def _img_src(el) -> Optional[str]:
-    for attr in ("src","data-src","data-lazy-src","srcset"):
-        val = el.get(attr,"")
-        if val:
-            return val.split(",")[0].split(" ")[0]
-    return None
+def _small_img(url: str) -> str:
+    """Resize the CloudFront image to 300 px to save bandwidth."""
+    if "~w=" in url:
+        return url.split("~")[0] + "~w=300,h=300"
+    return url
 
 
-# ── Comprehensive fallback ────────────────────────────────────────────────────
-# KnitPicks Palette Fingering — 200+ colors, listed exhaustively
+# ── Category pages that embed full colour-variant JSON-LD ─────────────────────
+# (product_name, category_url, weight, fiber, price)
+_CATEGORY_PAGES = [
+    ("Palette Fingering",
+     "https://www.knitpicks.com/yarn/palette-yarn/c/5420132",
+     "Fingering", "Wool", "$2.79"),
+    ("Wool of the Andes Worsted",
+     "https://www.knitpicks.com/yarn/wool-of-the-andes-worsted-yarn/c/5420103",
+     "Worsted", "Wool", "$5.49"),
+    ("Comfy Worsted",
+     "https://www.knitpicks.com/yarn/comfy-worsted-yarn/c/5420171",
+     "Worsted", "Cotton", "$6.99"),
+    ("Comfy Fingering",
+     "https://www.knitpicks.com/yarn/comfy-fingering-yarn/c/5420197",
+     "Fingering", "Cotton", "$5.49"),
+    ("Stroll Yarn",
+     "https://www.knitpicks.com/yarn/stroll-yarn/c/5420133",
+     "Fingering", "Wool", "$4.99"),
+    ("Brava Worsted",
+     "https://www.knitpicks.com/yarn/brava-worsted-yarn/c/5420219",
+     "Worsted", "Acrylic", "$4.99"),
+    ("Swish Worsted",
+     "https://www.knitpicks.com/yarn/swish-worsted-yarn/c/5420153",
+     "Worsted", "Wool", "$5.99"),
+    ("Dishie",
+     "https://www.knitpicks.com/yarn/dishie-yarn/c/5420207",
+     "Worsted", "Cotton", "$4.29"),
+]
+
+# ── Tier-2 seed data ──────────────────────────────────────────────────────────
 _PALETTE = [
-    # Whites / near-whites
     "Bare","White","Swan","Cream","Ivory","Eggshell","Pearl","Blizzard",
-    "Opal","Frost","Ice","Glacier","Vapor","Steam",
-    # Grays
     "Fog","Mist","Haze","Silver","Dove","Ash","Marble","Cobblestone",
     "Stone","Pebble","Graphite","Mineral","Shadow","Coal","Black",
     "Platinum","Smoke","Slate","Pewter","Storm","Iron",
-    # Pinks / roses
     "Fairy Tale","Blush","Ballerina","Carnation","Rose","Ballet",
     "Flamingo","Calypso","Peony","Camellia","Amaranth","Cerise",
     "Fuchsia","Magenta","Mulberry","Berry","Beet","Cranberry",
     "Raspberry","Watermelon","Hot Pink","Deep Rose","Mauve",
     "Dusty Rose","Antique Rose","Vintage Rose",
-    # Reds / oranges
     "Red","Scarlet","Ruby","Garnet","Cherry","Tomato","Fire","Cayenne",
     "Paprika","Cardinal","Crimson","Brick","Burgundy","Pomegranate",
-    "Rhubarb","Apricot","Peach","Melon","Cantaloupe","Papaya",
+    "Apricot","Peach","Melon","Cantaloupe","Papaya",
     "Tangerine","Tiger","Orange","Saffron","Pumpkin","Squash",
     "Rust","Copper","Sienna","Terracotta","Adobe","Clay","Burnt Sienna",
-    # Yellows / golds
     "Canary","Daffodil","Lemon","Citron","Butter","Sunburst","Gold",
     "Goldenrod","Sungold","Maize","Straw","Wheat","Champagne",
     "Mustard","Ochre","Brass","Amber","Honey","Caramel","Toffee",
-    # Greens
-    "Chartreuse","Lime","Apple Green","Citrus","Avocado","Celery",
+    "Chartreuse","Lime","Apple Green","Avocado","Celery",
     "Pistachio","Spearmint","Mint","Seafoam","Aloe","Sage","Fern",
-    "Clover","Moss","Basil","Herb","Verdant","Meadow","Grass",
+    "Clover","Moss","Basil","Verdant","Meadow","Grass",
     "Kelly","Shamrock","Jade","Emerald","Forest","Conifer","Hunter",
     "Pine","Shire","Juniper","Spruce","Cedar","Bottle Green",
-    # Teals / aquas
-    "Seafoam","Aqua","Turquoise","Lagoon","Pool","Oasis","Surf",
+    "Aqua","Turquoise","Lagoon","Pool","Oasis","Surf",
     "Clarity","Teal","Fjord","Seas","Tide","Pacific","Atlantic",
-    "Malachite","Selenite","Aquamarine",
-    # Blues
-    "Ice Blue","Powder Blue","Baby Blue","Sky","Carolina Blue",
+    "Malachite","Aquamarine",
+    "Powder Blue","Baby Blue","Sky","Carolina Blue",
     "Cornflower","Periwinkle","Wedgwood","Cerulean","Azure","Denim",
     "Cobalt","Marina","Neptune","Indigo","Baltic","Navy","Midnight",
     "Harbor","Royal Blue","Sapphire","Electric Blue","Hyacinth",
     "Delft","Colonial Blue","Cloud Blue","Steel Blue",
-    # Purples
-    "Lavender","Lilac","Wisteria","Hyacinth","Iris","Orchid","Thistle",
+    "Lavender","Lilac","Wisteria","Iris","Orchid","Thistle",
     "Violet","Amethyst","Purple","Grape","Plum","Boysenberry",
-    "Eggplant","Aubergine","Byzantium","Mulberry","Dusty Purple",
-    # Browns / naturals
+    "Eggplant","Aubergine","Byzantium","Dusty Purple",
     "Almond","Birch","Tan","Sand","Camel","Fawn","Driftwood","Latte",
     "Mocha","Coffee","Espresso","Bark","Nutmeg","Cinnamon","Chestnut",
     "Walnut","Mahogany","Chocolate","Dark Brown",
 ]
 
 _WOTA_COLORS = [
-    "White","Cream","Bare","Pampas Heather","Camel Heather","Bison",
-    "Tan","Almond","Chestnut Heather","Hazelnut Heather","Espresso","Bark",
-    "Claret Heather","Garnet Heather","Rouge Heather","Currant","Red",
-    "Pomegranate","Ginger","Pumpkin","Amber","Gold","Canary",
-    "Lemon Grass Heather","Green Tea Heather","Mint","Jade","Moss Heather",
-    "Forest Heather","Hunter","Teal","Pool","Cerulean","Sky Blue",
-    "Periwinkle","Cornflower","Delft Heather","Navy","Midnight Heather",
-    "Indigo","Baltic Heather","Iris","Amethyst Heather","Wisteria Heather",
-    "Mulberry","Eggplant","Heather","Gray","Ash","Cobblestone","Charcoal","Black",
-]
-
-_COMFY_COLORS = [
-    "White","Cream","Ballet","Blush","Rose Hip","Flamingo","Coral",
-    "Poppy","Red","Cayenne","Tangerine","Apricot","Lemon Drop","Butter",
-    "Goldenrod","Chartreuse","Clover","Spearmint","Mint","Seafoam","Teal",
-    "Pool","Clarity","Sky","Periwinkle","Cornflower","Denim","Sailor",
-    "Navy","Bluebell","Wisteria","Lavender","Orchid","Violet","Plum",
-    "Dove Heather","Silver","Ash","Graphite","Black",
-]
-
-_STROLL_COLORS = [
-    "White","Bare","Cream","Ballet","Blush","Rose","Flamingo","Coral",
-    "Red","Tomato","Tangerine","Canary","Goldenrod","Meadow","Clover",
-    "Mint","Teal","Cerulean","Sky","Cornflower","Denim","Navy","Cobalt",
-    "Indigo","Periwinkle","Lavender","Amethyst","Violet","Plum",
-    "Silver","Ash","Charcoal","Black","Caramel","Mocha","Espresso",
+    "White","Cream","Bare","Pampas","Camel","Bison","Tan","Almond",
+    "Chestnut","Hazelnut","Espresso","Bark","Claret","Garnet","Rouge",
+    "Currant","Red","Pomegranate","Ginger","Pumpkin","Amber","Gold",
+    "Canary","Mint","Jade","Moss","Forest","Hunter","Teal","Pool",
+    "Cerulean","Sky Blue","Periwinkle","Cornflower","Delft","Navy",
+    "Midnight","Indigo","Baltic","Iris","Amethyst","Wisteria","Mulberry",
+    "Eggplant","Heather","Gray","Ash","Cobblestone","Charcoal","Black",
 ]
 
 def _fallback_rows() -> list[tuple[str, str, str, str, str]]:
-    # (product, color, weight, price, fiber)
     rows = []
     for c in _PALETTE:
         rows.append(("Palette Fingering", c, "Fingering", "$2.79", "Wool"))
     for c in _WOTA_COLORS:
         rows.append(("Wool of the Andes Worsted", c, "Worsted", "$5.49", "Wool"))
-    for c in _COMFY_COLORS:
-        rows.append(("Comfy Worsted", c, "Worsted", "$6.99", "Cotton"))
-    for c in _STROLL_COLORS:
-        rows.append(("Stroll Fingering", c, "Fingering", "$4.99", "Wool"))
     return rows
+
+
+def _parse_variants(soup: BeautifulSoup) -> list[dict]:
+    """Extract hasVariant list from JSON-LD ProductGroup on the page."""
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = _json.loads(tag.string or "")
+            if "hasVariant" in data:
+                return data["hasVariant"]
+        except Exception:
+            pass
+    return []
 
 
 class KnitPicksScraper(BaseScraper):
@@ -140,69 +143,60 @@ class KnitPicksScraper(BaseScraper):
     base_url = "https://www.knitpicks.com"
 
     async def scrape(self, limit: int = 5000) -> list[dict[str, Any]]:
-        results = await self._live_scrape(limit)
+        results = await self._jsonld_scrape(limit)
         if not results:
             results = await self._fallback(limit)
         return results
 
-    async def _live_scrape(self, limit: int) -> list[dict[str, Any]]:
+    # ── Tier 1: JSON-LD category pages ───────────────────────────────────────
+
+    async def _jsonld_scrape(self, limit: int) -> list[dict[str, Any]]:
+        """
+        For each known category page, parse the embedded JSON-LD ProductGroup
+        and build one yarn entry per colour variant.  Each variant has a real
+        per-colour product image; PIL extracts the dominant hex from it.
+        """
         results: list[dict[str, Any]] = []
         try:
             async with httpx.AsyncClient(
-                headers=HEADERS, follow_redirects=True, timeout=25
+                headers=HEADERS, follow_redirects=True, timeout=30
             ) as client:
-                for page in range(1, 20):
+                for product_name, cat_url, weight, fiber, price in _CATEGORY_PAGES:
                     if len(results) >= limit:
                         break
-                    url = f"{self.base_url}/yarn?start={(page-1)*24}&sz=24"
-                    resp = await client.get(url)
+                    try:
+                        resp = await client.get(cat_url)
+                    except Exception:
+                        continue
                     if resp.status_code != 200:
-                        break
+                        continue
+
                     soup = BeautifulSoup(resp.text, "lxml")
-                    cards = soup.select(
-                        ".product-tile, .grid-tile, [class*='product-item'], "
-                        "[class*='product-grid-item']"
-                    )
-                    if not cards:
-                        break
+                    variants = _parse_variants(soup)
+                    if not variants:
+                        continue
 
                     tasks = []
-                    for card in cards:
+                    for v in variants:
                         if len(results) + len(tasks) >= limit:
                             break
-                        a = card.select_one("a[href]")
-                        title_el = card.select_one(
-                            "[class*='name'], [class*='title'], .product-name, h2, h3"
-                        )
-                        if not a:
+                        color_name = v.get("name", "").strip()
+                        if not color_name or not _is_solid(color_name):
                             continue
-                        title = title_el.get_text(strip=True) if title_el else "Knit Picks Yarn"
-                        if not _is_solid(title):
-                            continue
-                        href = _abs(a["href"], self.base_url)
-
-                        swatch_img = None
-                        for sel in (
-                            "[class*='swatch'] img","[class*='color-swatch'] img",
-                            "[data-color] img","li[class*='color'] img",
-                        ):
-                            el = card.select_one(sel)
-                            if el:
-                                s = _img_src(el)
-                                if s:
-                                    swatch_img = _abs(s, self.base_url)
-                                    break
-                        if not swatch_img:
-                            img_el = card.select_one("img")
-                            if img_el:
-                                s = _img_src(img_el)
-                                if s:
-                                    swatch_img = _abs(s, self.base_url)
+                        image_url = v.get("image")
+                        if image_url:
+                            image_url = _small_img(image_url)
+                        product_url = v.get("url") or cat_url
 
                         tasks.append(self.make_yarn(
-                            product_name=title, color_name="",
-                            url=href, image_url=swatch_img,
-                            extract_image_color=bool(swatch_img),
+                            product_name=product_name,
+                            color_name=color_name,
+                            url=product_url,
+                            image_url=image_url,
+                            weight=weight,
+                            fiber=fiber,
+                            price=price,
+                            extract_image_color=bool(image_url),
                         ))
 
                     for i in range(0, len(tasks), BATCH_SIZE):
@@ -213,14 +207,17 @@ class KnitPicksScraper(BaseScraper):
             pass
         return results
 
+    # ── Tier 2: color-name seed fallback ─────────────────────────────────────
+
     async def _fallback(self, limit: int) -> list[dict[str, Any]]:
         rows = _fallback_rows()
         tasks = [
             self.make_yarn(
                 product_name=r[0], color_name=r[1],
-                url=f"{self.base_url}/{r[0].lower().replace(' ','-')}",
+                url=f"{self.base_url}/{r[0].lower().replace(' ', '-')}",
                 weight=r[2], price=r[3], fiber=r[4],
             )
             for r in rows[:limit]
+            if _is_solid(r[1])
         ]
         return list(await asyncio.gather(*tasks))

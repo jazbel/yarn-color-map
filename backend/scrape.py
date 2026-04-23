@@ -13,13 +13,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from scrapers.hobbii import HobbiiScraper
-from scrapers.lovecrafts import LovecraftsScraper
+from scrapers.lionbrand import LionBrandScraper
 from scrapers.knitpicks import KnitPicksScraper
+from scrapers.michaels import MichaelsScraper
 
 SCRAPERS = {
     "hobbii": HobbiiScraper(),
-    "lovecrafts": LovecraftsScraper(),
+    "lionbrand": LionBrandScraper(),
     "knitpicks": KnitPicksScraper(),
+    "michaels": MichaelsScraper(),
 }
 
 CACHE_PATH = Path(__file__).parent / "yarn_cache.json"
