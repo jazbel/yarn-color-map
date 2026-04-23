@@ -2,13 +2,15 @@ const API = "";  // same origin; change to "http://localhost:8000" if opening in
 
 // ── State ────────────────────────────────────────────────────
 const state = {
-  yarns: [],          // all fetched yarns
-  filtered: [],       // after client-side filters
-  displayed: [],      // slice shown in grid
+  yarns: [],
+  filtered: [],
+  displayed: [],
   pageSize: 60,
   offset: 0,
   activeStore: null,
   activeFamily: null,
+  activeWeight: null,
+  activeFiber: null,
   search: "",
   sort: "default",
   pickerActive: false,
@@ -27,6 +29,8 @@ const FAMILY_COLORS = {
 const $ = (id) => document.getElementById(id);
 const storeFiltersEl = $("store-filters");
 const familyFiltersEl = $("family-filters");
+const weightFiltersEl = $("weight-filters");
+const fiberFiltersEl = $("fiber-filters");
 const gridEl = $("yarn-grid");
 const countEl = $("count-label");
 const emptyEl = $("empty-state");
@@ -103,13 +107,17 @@ async function copyText(text) {
 async function init() {
   showSkeletons(12);
   try {
-    const [storesRes, familiesRes, yarnsRes] = await Promise.all([
+    const [storesRes, familiesRes, weightsRes, fibersRes, yarnsRes] = await Promise.all([
       fetch(`${API}/api/stores`).then(r => r.json()),
       fetch(`${API}/api/color-families`).then(r => r.json()),
+      fetch(`${API}/api/weights`).then(r => r.json()),
+      fetch(`${API}/api/fibers`).then(r => r.json()),
       fetch(`${API}/api/yarns?limit=10000`).then(r => r.json()),
     ]);
     buildStoreChips(storesRes);
     buildFamilyChips(familiesRes);
+    buildWeightChips(weightsRes);
+    buildFiberChips(fibersRes, yarnsRes.items || []);
     state.yarns = yarnsRes.items || [];
     applyFiltersAndRender();
   } catch (e) {
@@ -141,6 +149,35 @@ function buildFamilyChips(families) {
   });
 }
 
+// Weight labels with abbreviated notation shown alongside
+const WEIGHT_LABELS = {
+  "Lace": "Lace (0)", "Fingering": "Fingering (1)", "Sport": "Sport (2)",
+  "DK": "DK (3)", "Worsted": "Worsted (4)", "Aran": "Aran (5)",
+  "Bulky": "Bulky (6)", "Super Bulky": "Super Bulky (7)", "Jumbo": "Jumbo (8)",
+};
+
+function buildWeightChips(weights) {
+  weightFiltersEl.innerHTML = "";
+  weightFiltersEl.appendChild(makeChip("All Weights", null, "weight", !state.activeWeight));
+  weights.forEach(w => {
+    weightFiltersEl.appendChild(
+      makeChip(WEIGHT_LABELS[w] || w, w, "weight", state.activeWeight === w)
+    );
+  });
+}
+
+function buildFiberChips(fibers, yarns) {
+  // Only show fibers that actually appear in the data
+  const present = new Set(yarns.map(y => y.fiber).filter(Boolean));
+  fiberFiltersEl.innerHTML = "";
+  fiberFiltersEl.appendChild(makeChip("All Fibers", null, "fiber", !state.activeFiber));
+  fibers.filter(f => present.has(f)).forEach(f => {
+    fiberFiltersEl.appendChild(
+      makeChip(f, f, "fiber", state.activeFiber === f)
+    );
+  });
+}
+
 function makeChip(label, value, kind, active, dotColor) {
   const btn = document.createElement("button");
   btn.className = "chip" + (active ? " active" : "");
@@ -152,16 +189,26 @@ function makeChip(label, value, kind, active, dotColor) {
   }
   btn.appendChild(document.createTextNode(label));
   btn.addEventListener("click", () => {
+    const selectors = {
+      store:  "#store-filters .chip",
+      family: "#family-filters .chip",
+      weight: "#weight-filters .chip",
+      fiber:  "#fiber-filters .chip",
+    };
+    document.querySelectorAll(selectors[kind]).forEach(c => c.classList.remove("active"));
+    btn.classList.add("active");
+
     if (kind === "store") {
       state.activeStore = value;
       state.pickerActive = false;
       $("clear-picker").style.display = "none";
-      document.querySelectorAll("#store-filters .chip").forEach(c => c.classList.remove("active"));
-    } else {
+    } else if (kind === "family") {
       state.activeFamily = value;
-      document.querySelectorAll("#family-filters .chip").forEach(c => c.classList.remove("active"));
+    } else if (kind === "weight") {
+      state.activeWeight = value;
+    } else if (kind === "fiber") {
+      state.activeFiber = value;
     }
-    btn.classList.add("active");
     state.offset = 0;
     applyFiltersAndRender();
   });
@@ -185,6 +232,8 @@ function applyFiltersAndRender() {
 
   if (state.activeStore)  pool = pool.filter(y => y.store_id === state.activeStore);
   if (state.activeFamily) pool = pool.filter(y => y.color_family === state.activeFamily);
+  if (state.activeWeight) pool = pool.filter(y => y.weight === state.activeWeight);
+  if (state.activeFiber)  pool = pool.filter(y => y.fiber  === state.activeFiber);
 
   if (state.search) {
     const q = state.search.toLowerCase();
@@ -329,6 +378,11 @@ function openModal(yarn) {
       : "Hex mapped from color name";
   }
 
+  const modalFiber = $("modal-fiber");
+  if (modalFiber) {
+    modalFiber.textContent = yarn.fiber || "";
+    modalFiber.style.display = yarn.fiber ? "" : "none";
+  }
   modalWeight.textContent = yarn.weight || "";
   modalWeight.style.display = yarn.weight ? "" : "none";
 

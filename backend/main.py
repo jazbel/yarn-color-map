@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from scrapers.hobbii import HobbiiScraper
 from scrapers.lovecrafts import LovecraftsScraper
 from scrapers.knitpicks import KnitPicksScraper
+from yarn_meta import WEIGHT_ORDER, FIBER_ORDER
 
 app = FastAPI(title="Yarn Color Map")
 
@@ -60,11 +61,21 @@ def get_stores():
 def get_color_families():
     return COLOR_FAMILIES
 
+@app.get("/api/weights")
+def get_weights():
+    return WEIGHT_ORDER
+
+@app.get("/api/fibers")
+def get_fibers():
+    return FIBER_ORDER
+
 
 @app.get("/api/yarns")
 async def get_yarns(
     store: Optional[str] = None,
     color_family: Optional[str] = None,
+    weight: Optional[str] = None,
+    fiber: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = Query(default=60, le=10000),
     offset: int = 0,
@@ -83,6 +94,12 @@ async def get_yarns(
 
     if color_family:
         all_yarns = [y for y in all_yarns if y.get("color_family") == color_family]
+
+    if weight:
+        all_yarns = [y for y in all_yarns if y.get("weight") == weight]
+
+    if fiber:
+        all_yarns = [y for y in all_yarns if y.get("fiber") == fiber]
 
     if search:
         q = search.lower()

@@ -17,7 +17,7 @@ class BaseScraper:
     name: str = "Unknown Store"
     base_url: str = ""
 
-    async def scrape(self, limit: int = 100) -> list[dict[str, Any]]:
+    async def scrape(self, limit: int = 5000) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     async def make_yarn(
@@ -30,6 +30,7 @@ class BaseScraper:
         hex_color: Optional[str] = None,
         brand: Optional[str] = None,
         weight: Optional[str] = None,
+        fiber: Optional[str] = None,
         price: Optional[str] = None,
         extract_image_color: bool = False,
     ) -> dict[str, Any]:
@@ -48,7 +49,7 @@ class BaseScraper:
             "product_name": product_name,
             "color_name": color_name,
             "hex_color": hex_color,
-            "color_source": color_source,   # "image" or "name"
+            "color_source": color_source,
             "color_family": closest_color_family(r, g, b),
             "store": self.name,
             "store_id": self.store_id,
@@ -56,5 +57,6 @@ class BaseScraper:
             "image_url": image_url,
             "brand": brand or self.name,
             "weight": weight,
+            "fiber": fiber,
             "price": price,
         }

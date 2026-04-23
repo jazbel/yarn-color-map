@@ -120,16 +120,17 @@ _STROLL_COLORS = [
     "Silver","Ash","Charcoal","Black","Caramel","Mocha","Espresso",
 ]
 
-def _fallback_rows() -> list[tuple[str, str, str, str]]:
+def _fallback_rows() -> list[tuple[str, str, str, str, str]]:
+    # (product, color, weight, price, fiber)
     rows = []
     for c in _PALETTE:
-        rows.append(("Palette Fingering", c, "Fingering", "$2.79"))
+        rows.append(("Palette Fingering", c, "Fingering", "$2.79", "Wool"))
     for c in _WOTA_COLORS:
-        rows.append(("Wool of the Andes Worsted", c, "Worsted", "$5.49"))
+        rows.append(("Wool of the Andes Worsted", c, "Worsted", "$5.49", "Wool"))
     for c in _COMFY_COLORS:
-        rows.append(("Comfy Worsted", c, "Worsted", "$6.99"))
+        rows.append(("Comfy Worsted", c, "Worsted", "$6.99", "Cotton"))
     for c in _STROLL_COLORS:
-        rows.append(("Stroll Fingering", c, "Fingering", "$4.99"))
+        rows.append(("Stroll Fingering", c, "Fingering", "$4.99", "Wool"))
     return rows
 
 
@@ -218,7 +219,7 @@ class KnitPicksScraper(BaseScraper):
             self.make_yarn(
                 product_name=r[0], color_name=r[1],
                 url=f"{self.base_url}/{r[0].lower().replace(' ','-')}",
-                weight=r[2], price=r[3],
+                weight=r[2], price=r[3], fiber=r[4],
             )
             for r in rows[:limit]
         ]

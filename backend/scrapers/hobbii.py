@@ -11,6 +11,7 @@ from typing import Any, Optional
 import httpx
 
 from scrapers.base import BaseScraper, HEADERS
+from yarn_meta import infer_weight, infer_fiber, strip_html
 
 # Shopify max items per page
 PAGE_LIMIT = 250
@@ -110,6 +111,12 @@ class HobbiiScraper(BaseScraper):
         )
         handle = product.get("handle", "")
         product_url = f"{self.base_url}/products/{handle}"
+        title = product["title"]
+        body = product.get("body_html", "")
+
+        # Extract fiber and weight once per product (shared by all variants)
+        fiber = infer_fiber(title, body)
+        weight = infer_weight(title, strip_html(body))
 
         tasks = []
         for variant in product.get("variants", []):
@@ -136,11 +143,13 @@ class HobbiiScraper(BaseScraper):
 
             tasks.append(
                 self.make_yarn(
-                    product_name=product["title"],
+                    product_name=title,
                     color_name=color_name,
                     url=product_url,
                     image_url=img_src,
                     extract_image_color=use_image,
+                    fiber=fiber,
+                    weight=weight,
                     price=price,
                 )
             )
@@ -148,128 +157,34 @@ class HobbiiScraper(BaseScraper):
 
     # ── Fallback seed data ────────────────────────────────────────────────────
     async def _fallback(self) -> list[dict[str, Any]]:
+        # (product, color, weight, price, fiber)
+        PRODUCTS = [
+            ("Friends Cotton 8/4", "DK",        "$3.49", "Cotton"),
+            ("Friends Cotton 8/8", "Bulky",      "$4.99", "Cotton"),
+            ("Happy Feet",         "Fingering",  "$6.99", "Wool"),
+            ("Alpaca Soft DK",     "DK",         "$7.99", "Alpaca"),
+        ]
+        COLORS = [
+            "White","Cream","Oatmilk","Beige","Blush","Dusty Rose","Old Rose",
+            "Light Pink","Rose","Hot Pink","Raspberry","Cherry Red","Red","Coral",
+            "Peach","Apricot","Orange","Burnt Orange","Terracotta","Mustard",
+            "Golden","Yellow","Lime Green","Mint Green","Sage Green","Olive Green",
+            "Forest Green","Hunter Green","Emerald","Teal","Turquoise","Aqua",
+            "Sky Blue","Baby Blue","Cornflower Blue","Royal Blue","Cobalt Blue",
+            "Denim Blue","Navy Blue","Midnight Blue","Indigo","Lavender","Lilac",
+            "Purple","Grape","Eggplant","Light Gray","Silver Gray","Charcoal",
+            "Black","Camel","Tan","Brown","Chocolate",
+        ]
         rows = [
-            # Friends Cotton 8/4 — ~50 solid colors
-            ("Friends Cotton 8/4","White",         "DK","$3.49"),
-            ("Friends Cotton 8/4","Oatmilk",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Cream",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Beige",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Blush",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Dusty Rose",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Old Rose",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Light Pink",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Rose",           "DK","$3.49"),
-            ("Friends Cotton 8/4","Hot Pink",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Raspberry",      "DK","$3.49"),
-            ("Friends Cotton 8/4","Cherry Red",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Red",            "DK","$3.49"),
-            ("Friends Cotton 8/4","Coral",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Peach",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Apricot",        "DK","$3.49"),
-            ("Friends Cotton 8/4","Orange",         "DK","$3.49"),
-            ("Friends Cotton 8/4","Burnt Orange",   "DK","$3.49"),
-            ("Friends Cotton 8/4","Terracotta",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Mustard",        "DK","$3.49"),
-            ("Friends Cotton 8/4","Golden",         "DK","$3.49"),
-            ("Friends Cotton 8/4","Yellow",         "DK","$3.49"),
-            ("Friends Cotton 8/4","Lime Green",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Mint Green",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Sage Green",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Olive Green",    "DK","$3.49"),
-            ("Friends Cotton 8/4","Forest Green",   "DK","$3.49"),
-            ("Friends Cotton 8/4","Hunter Green",   "DK","$3.49"),
-            ("Friends Cotton 8/4","Emerald",        "DK","$3.49"),
-            ("Friends Cotton 8/4","Teal",           "DK","$3.49"),
-            ("Friends Cotton 8/4","Turquoise",      "DK","$3.49"),
-            ("Friends Cotton 8/4","Aqua",           "DK","$3.49"),
-            ("Friends Cotton 8/4","Sky Blue",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Baby Blue",      "DK","$3.49"),
-            ("Friends Cotton 8/4","Cornflower Blue","DK","$3.49"),
-            ("Friends Cotton 8/4","Royal Blue",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Cobalt Blue",    "DK","$3.49"),
-            ("Friends Cotton 8/4","Denim Blue",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Navy Blue",      "DK","$3.49"),
-            ("Friends Cotton 8/4","Midnight Blue",  "DK","$3.49"),
-            ("Friends Cotton 8/4","Indigo",         "DK","$3.49"),
-            ("Friends Cotton 8/4","Lavender",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Lilac",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Purple",         "DK","$3.49"),
-            ("Friends Cotton 8/4","Grape",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Eggplant",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Heather",        "DK","$3.49"),
-            ("Friends Cotton 8/4","Light Gray",     "DK","$3.49"),
-            ("Friends Cotton 8/4","Silver Gray",    "DK","$3.49"),
-            ("Friends Cotton 8/4","Charcoal",       "DK","$3.49"),
-            ("Friends Cotton 8/4","Black",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Camel",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Tan",            "DK","$3.49"),
-            ("Friends Cotton 8/4","Brown",          "DK","$3.49"),
-            ("Friends Cotton 8/4","Chocolate",      "DK","$3.49"),
-            # Friends Cotton 8/8 (bulky)
-            ("Friends Cotton 8/8","White",          "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Cream",          "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Blush",          "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Rose",           "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Raspberry",      "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Red",            "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Orange",         "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Mustard",        "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Yellow",         "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Lime Green",     "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Forest Green",   "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Teal",           "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Sky Blue",       "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Royal Blue",     "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Navy Blue",      "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Purple",         "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Lavender",       "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Charcoal",       "Bulky","$4.99"),
-            ("Friends Cotton 8/8","Black",          "Bulky","$4.99"),
-            # Happy Feet sock yarn
-            ("Happy Feet","Ivory",           "Fingering","$6.99"),
-            ("Happy Feet","Blush",           "Fingering","$6.99"),
-            ("Happy Feet","Coral",           "Fingering","$6.99"),
-            ("Happy Feet","Red",             "Fingering","$6.99"),
-            ("Happy Feet","Tangerine",       "Fingering","$6.99"),
-            ("Happy Feet","Mustard",         "Fingering","$6.99"),
-            ("Happy Feet","Yellow",          "Fingering","$6.99"),
-            ("Happy Feet","Sage Green",      "Fingering","$6.99"),
-            ("Happy Feet","Forest Green",    "Fingering","$6.99"),
-            ("Happy Feet","Teal",            "Fingering","$6.99"),
-            ("Happy Feet","Cerulean",        "Fingering","$6.99"),
-            ("Happy Feet","Navy Blue",       "Fingering","$6.99"),
-            ("Happy Feet","Indigo",          "Fingering","$6.99"),
-            ("Happy Feet","Lavender",        "Fingering","$6.99"),
-            ("Happy Feet","Gray",            "Fingering","$6.99"),
-            ("Happy Feet","Black",           "Fingering","$6.99"),
-            # Alpaca Soft DK
-            ("Alpaca Soft DK","Simply White", "DK","$7.99"),
-            ("Alpaca Soft DK","Cream",        "DK","$7.99"),
-            ("Alpaca Soft DK","Blush",        "DK","$7.99"),
-            ("Alpaca Soft DK","Dusty Rose",   "DK","$7.99"),
-            ("Alpaca Soft DK","Rose",         "DK","$7.99"),
-            ("Alpaca Soft DK","Red",          "DK","$7.99"),
-            ("Alpaca Soft DK","Coral",        "DK","$7.99"),
-            ("Alpaca Soft DK","Peach",        "DK","$7.99"),
-            ("Alpaca Soft DK","Mustard",      "DK","$7.99"),
-            ("Alpaca Soft DK","Golden",       "DK","$7.99"),
-            ("Alpaca Soft DK","Sage Green",   "DK","$7.99"),
-            ("Alpaca Soft DK","Forest Green", "DK","$7.99"),
-            ("Alpaca Soft DK","Teal",         "DK","$7.99"),
-            ("Alpaca Soft DK","Sky Blue",     "DK","$7.99"),
-            ("Alpaca Soft DK","Royal Blue",   "DK","$7.99"),
-            ("Alpaca Soft DK","Navy Blue",    "DK","$7.99"),
-            ("Alpaca Soft DK","Lavender",     "DK","$7.99"),
-            ("Alpaca Soft DK","Purple",       "DK","$7.99"),
-            ("Alpaca Soft DK","Light Gray",   "DK","$7.99"),
-            ("Alpaca Soft DK","Charcoal",     "DK","$7.99"),
-            ("Alpaca Soft DK","Black",        "DK","$7.99"),
+            (prod, color, weight, price, fiber)
+            for prod, weight, price, fiber in PRODUCTS
+            for color in COLORS
         ]
         tasks = [
             self.make_yarn(
                 product_name=r[0], color_name=r[1],
                 url=f"{self.base_url}/products/{r[0].lower().replace(' ','-')}",
-                weight=r[2], price=r[3],
+                weight=r[2], price=r[3], fiber=r[4],
             )
             for r in rows
         ]

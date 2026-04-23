@@ -121,20 +121,21 @@ _LB_COMFY = [
     ("Black","Worsted","$9.99"),
 ]
 
-def _fallback_rows() -> list[tuple[str, str, str, str]]:
+def _fallback_rows() -> list[tuple[str, str, str, str, str]]:
+    # (product, color, weight, price, fiber)
     rows = []
     for (c, w, p) in _PB_DK:
-        rows.append(("Paintbox Simply DK", c, w, p))
+        rows.append(("Paintbox Simply DK", c, w, p, "Acrylic"))
     for (c, w, p) in _PB_CHUNKY:
-        rows.append(("Paintbox Simply Chunky", c, w, p))
+        rows.append(("Paintbox Simply Chunky", c, w, p, "Acrylic"))
     for (c, w, p) in _PB_WORSTED:
-        rows.append(("Paintbox Simply Worsted", c, w, p))
+        rows.append(("Paintbox Simply Worsted", c, w, p, "Acrylic"))
     for (c, w, p) in _SC_DK:
-        rows.append(("Stylecraft Special DK", c, w, p))
+        rows.append(("Stylecraft Special DK", c, w, p, "Acrylic"))
     for (c, w, p) in _LB_LOVE:
-        rows.append(("Lion Brand Pound of Love", c, w, p))
+        rows.append(("Lion Brand Pound of Love", c, w, p, "Acrylic"))
     for (c, w, p) in _LB_COMFY:
-        rows.append(("Lion Brand Comfy Cotton Blend", c, w, p))
+        rows.append(("Lion Brand Comfy Cotton Blend", c, w, p, "Cotton"))
     return rows
 
 
@@ -221,7 +222,7 @@ class LovecraftsScraper(BaseScraper):
             self.make_yarn(
                 product_name=r[0], color_name=r[1],
                 url=f"{self.base_url}/en-us/p/{r[0].lower().replace(' ','-')}",
-                weight=r[2], price=r[3],
+                weight=r[2], price=r[3], fiber=r[4],
             )
             for r in rows[:limit]
             if _is_solid(r[1])
