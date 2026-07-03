@@ -81,7 +81,7 @@ async def get_yarns(
     weight: Optional[str] = None,
     fiber: Optional[str] = None,
     search: Optional[str] = None,
-    limit: int = Query(default=60, le=10000),
+    limit: int = Query(default=60, le=100000),
     offset: int = 0,
 ):
     cache = load_cache()

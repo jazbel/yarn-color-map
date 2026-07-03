@@ -112,7 +112,7 @@ async function init() {
       fetch(`${API}/api/color-families`).then(r => r.json()),
       fetch(`${API}/api/weights`).then(r => r.json()),
       fetch(`${API}/api/fibers`).then(r => r.json()),
-      fetch(`${API}/api/yarns?limit=10000`).then(r => r.json()),
+      fetch(`${API}/api/yarns?limit=100000`).then(r => r.json()),
     ]);
     buildStoreChips(storesRes);
     buildFamilyChips(familiesRes);
@@ -411,7 +411,7 @@ refreshBtn.addEventListener("click", async () => {
   showSkeletons(12);
   try {
     await fetch(`${API}/api/refresh`, { method: "POST" });
-    const res = await fetch(`${API}/api/yarns?limit=10000`).then(r => r.json());
+    const res = await fetch(`${API}/api/yarns?limit=100000`).then(r => r.json());
     state.yarns = res.items || [];
     applyFiltersAndRender();
     showToast("Yarns refreshed!");
