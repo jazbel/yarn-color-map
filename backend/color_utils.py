@@ -1,6 +1,7 @@
 import re
 import io
 import colorsys
+from pathlib import Path
 from typing import Optional, Tuple
 
 import httpx
@@ -270,7 +271,10 @@ def dominant_color_from_bytes(data: bytes) -> Optional[str]:
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
-async def extract_dominant_color(image_url: str) -> Optional[str]:
+async def extract_dominant_color(
+    image_url: str,
+    save_path: Optional[Path] = None,
+) -> Optional[str]:
     try:
         async with httpx.AsyncClient(
             timeout=12,
@@ -280,6 +284,9 @@ async def extract_dominant_color(image_url: str) -> Optional[str]:
             resp = await client.get(image_url)
             if resp.status_code != 200:
                 return None
+        if save_path is not None and not save_path.exists():
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            save_path.write_bytes(resp.content)
         return dominant_color_from_bytes(resp.content)
     except Exception:
         return None

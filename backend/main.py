@@ -15,6 +15,7 @@ from scrapers.hobbii import HobbiiScraper
 from scrapers.lionbrand import LionBrandScraper
 from scrapers.knitpicks import KnitPicksScraper
 from scrapers.michaels import MichaelsScraper
+from scrapers.knittingforolive import KnittingForOliveScraper
 from yarn_meta import WEIGHT_ORDER, FIBER_ORDER
 
 app = FastAPI(title="Yarn Color Map")
@@ -31,6 +32,7 @@ SCRAPERS = {
     "lionbrand": LionBrandScraper(),
     "knitpicks": KnitPicksScraper(),
     "michaels": MichaelsScraper(),
+    "knittingforolive": KnittingForOliveScraper(),
 }
 
 CACHE_PATH = Path(__file__).parent / "yarn_cache.json"
@@ -137,6 +139,11 @@ def clear_cache():
         CACHE_PATH.unlink()
     return {"cleared": True}
 
+
+# Serve locally saved yarn images
+images_dir = Path(__file__).parent / "images"
+images_dir.mkdir(exist_ok=True)
+app.mount("/images", StaticFiles(directory=str(images_dir)), name="images")
 
 # Serve the frontend from the project root
 frontend_dir = Path(__file__).parent.parent / "frontend"

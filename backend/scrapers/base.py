@@ -1,5 +1,9 @@
+import hashlib
+from pathlib import Path
 from typing import Any, Optional
 from color_utils import color_name_to_hex, closest_color_family, hex_to_rgb, extract_dominant_color
+
+IMAGES_DIR = Path(__file__).parent.parent / "images"
 
 HEADERS = {
     "User-Agent": (
@@ -35,8 +39,15 @@ class BaseScraper:
         extract_image_color: bool = False,
     ) -> dict[str, Any]:
         color_source = "name"
+        local_image_path: Optional[str] = None
         if not hex_color and image_url and extract_image_color:
-            extracted = await extract_dominant_color(image_url)
+            ext = Path(image_url.split("?")[0]).suffix
+            if not ext or len(ext) > 5:
+                ext = ".jpg"
+            fname = hashlib.md5(image_url.encode()).hexdigest() + ext
+            save_path = IMAGES_DIR / fname
+            local_image_path = f"/images/{fname}"
+            extracted = await extract_dominant_color(image_url, save_path=save_path)
             if extracted:
                 hex_color = extracted
                 color_source = "image"
@@ -55,6 +66,7 @@ class BaseScraper:
             "store_id": self.store_id,
             "url": url,
             "image_url": image_url,
+            "local_image_path": local_image_path,
             "brand": brand or self.name,
             "weight": weight,
             "fiber": fiber,
