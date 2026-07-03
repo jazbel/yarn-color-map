@@ -14,3 +14,6 @@ venv/
 # Editor
 .vscode/
 .idea/
+
+# Scraped images (generated at runtime)
+backend/images/
